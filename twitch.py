@@ -18,6 +18,7 @@ from yarl import URL
 from translate import _
 from gui import GUIManager
 from channel import Channel
+from discord_status import DiscordStatus
 from websocket import WebsocketPool
 from inventory import DropsCampaign
 from exceptions import (
@@ -486,6 +487,8 @@ class Twitch:
         self.websocket = WebsocketPool(self)
         # Maintenance task
         self._mnt_task: asyncio.Task[None] | None = None
+        # Discord status message
+        self.discord = DiscordStatus(self)
 
     async def get_session(self) -> aiohttp.ClientSession:
         if (session := self._session) is not None:
@@ -531,6 +534,7 @@ class Twitch:
         if self._mnt_task is not None:
             self._mnt_task.cancel()
             self._mnt_task = None
+        await self.discord.stop()
         # stop websocket, close session and save cookies
         await self.websocket.stop(clear_topics=True)
         if self._session is not None:
@@ -643,6 +647,7 @@ class Twitch:
         """
         self.gui.start()
         auth_state = await self.get_auth()
+        self.discord.start()
         await self.websocket.start()
         # NOTE: watch task is explicitly restarted on each new run
         if self._watching_task is not None:
