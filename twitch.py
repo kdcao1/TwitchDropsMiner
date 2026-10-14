@@ -152,6 +152,10 @@ class _AuthState:
                     #     "verification_uri": "https://www.twitch.tv/activate?device-code=ABCDEFGH"
                     # }
                     response_json: JsonType = await response.json()
+                    if "device_code" not in response_json:
+                        detail = f"Device code request failed: HTTP {response.status}: {response_json}"
+                        logging.getLogger("TwitchDrops").error(detail)
+                        self._twitch.gui.print(detail)
                     device_code: str = response_json["device_code"]
                     user_code: str = response_json["user_code"]
                     interval: int = response_json["interval"]
