@@ -80,6 +80,14 @@ class DiscordStatus:
     # --- message building ---
 
     def _current_drop(self) -> TimedDrop | None:
+        # Several campaigns on the same channel can progress at once, and the GUI shows
+        # whichever one Twitch reported last. Use the miner's own pick instead, which
+        # honors the manual campaign priority, so the message does not flip back and forth.
+        channel = self._twitch.watching_channel.get_with_default(None)
+        if channel is not None:
+            campaign = self._twitch.get_active_campaign(channel)
+            if campaign is not None and (drop := campaign.first_drop) is not None:
+                return drop
         return self._twitch.gui.progress.current_drop
 
     def _priority_text(self, campaign: Any) -> str:
