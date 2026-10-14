@@ -704,6 +704,10 @@ class CampaignProgress:
         self._timer_task: asyncio.Task[None] | None = None
         self.display(None)
 
+    @property
+    def current_drop(self) -> TimedDrop | None:
+        return self._drop
+
     def _divmod(self, minutes: int) -> tuple[int, int]:
         if self._seconds < 60 and minutes > 0:
             minutes -= 1
@@ -1764,6 +1768,45 @@ class SettingsPanel:
             ),
         ).grid(column=1, row=irow, sticky="w")
 
+        # Discord section
+        discord_frame = ttk.LabelFrame(
+            center_frame, padding=(4, 0, 4, 4), text="Discord status (bot)"
+        )
+        discord_frame.grid(column=0, row=2, columnspan=3, sticky="nsew")
+        discord_center = ttk.Frame(discord_frame)
+        discord_center.grid(column=0, row=0)
+        discord_frame.columnconfigure(0, weight=1)
+        self._discord_vars: dict[str, Any] = {
+            "enabled": IntVar(master, int(self._settings.discord_enabled)),
+            "token": StringVar(master, self._settings.discord_token),
+            "channel_id": StringVar(master, self._settings.discord_channel_id),
+            "interval": StringVar(master, str(self._settings.discord_interval)),
+        }
+        ttk.Label(discord_center, text="Enabled").grid(column=0, row=0, sticky="e")
+        ttk.Checkbutton(
+            discord_center, variable=self._discord_vars["enabled"], command=self.discord_apply
+        ).grid(column=1, row=0, sticky="w")
+        ttk.Label(discord_center, text="Bot token").grid(column=0, row=1, sticky="e")
+        token_entry = ttk.Entry(
+            discord_center, width=40, show="•", textvariable=self._discord_vars["token"]
+        )
+        token_entry.grid(column=1, row=1, sticky="w")
+        ttk.Label(discord_center, text="Channel ID").grid(column=0, row=2, sticky="e")
+        channel_entry = ttk.Entry(
+            discord_center, width=40, textvariable=self._discord_vars["channel_id"]
+        )
+        channel_entry.grid(column=1, row=2, sticky="w")
+        ttk.Label(
+            discord_center, text="Update interval (seconds, min 30)"
+        ).grid(column=0, row=3, sticky="e")
+        interval_entry = ttk.Entry(
+            discord_center, width=8, textvariable=self._discord_vars["interval"]
+        )
+        interval_entry.grid(column=1, row=3, sticky="w")
+        for entry in (token_entry, channel_entry, interval_entry):
+            entry.bind("<FocusOut>", lambda e: self.discord_apply())
+            entry.bind("<Return>", lambda e: self.discord_apply())
+
         # Priority section
         priority_frame = ttk.LabelFrame(
             center_frame, padding=(4, 0, 4, 4), text=_("gui", "settings", "priority")
@@ -1864,6 +1907,26 @@ class SettingsPanel:
             text=_("gui", "settings", "reload"),
             command=self._manager._twitch.state_change(State.INVENTORY_FETCH),
         ).grid(column=1, row=0)
+
+    def discord_apply(self) -> None:
+        settings = self._settings
+        enabled = bool(self._discord_vars["enabled"].get())
+        token = self._discord_vars["token"].get().strip()
+        channel_id = self._discord_vars["channel_id"].get().strip()
+        try:
+            interval = max(30, int(self._discord_vars["interval"].get()))
+        except ValueError:
+            interval = settings.discord_interval
+        self._discord_vars["interval"].set(str(interval))
+        if channel_id != settings.discord_channel_id:
+            # a different channel means the stored message is no longer valid
+            settings.discord_message_id = ''
+        settings.discord_enabled = enabled
+        settings.discord_token = token
+        settings.discord_channel_id = channel_id
+        settings.discord_interval = interval
+        settings.save()
+        asyncio.create_task(self._manager._twitch.discord.restart())
 
     def clear_selection(self) -> None:
         self._priority_list.selection_clear(0, "end")
