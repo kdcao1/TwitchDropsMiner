@@ -62,6 +62,18 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("TwitchDrops")
+GDI_WARN_THRESHOLD = 7000  # Windows caps each process at around 10000 GDI objects
+
+
+def gdi_object_count() -> int | None:
+    """Returns the process' current GDI object count, or None outside of Windows."""
+    if sys.platform != "win32":
+        return None
+    try:
+        process = ctypes.windll.kernel32.GetCurrentProcess()  # type: ignore[attr-defined]
+        return int(ctypes.windll.user32.GetGuiResources(process, 0))  # type: ignore[attr-defined]
+    except Exception:
+        return None
 TK_PADDING = Union[int, Tuple[int, int], Tuple[int, int, int], Tuple[int, int, int, int]]
 DIGITS = ceil(log10(WS_TOPICS_LIMIT))
 
@@ -1465,7 +1477,20 @@ class InventoryOverview:
             status_color = "red"
         return (status_text, status_color)
 
+    def _log_gdi(self, where: str) -> None:
+        count = gdi_object_count()
+        if count is None:
+            return
+        if count >= GDI_WARN_THRESHOLD:
+            # the default logging level hides warnings, so show this one in the console output
+            self._manager.print(
+                f"Warning: high GDI object count after {where}: {count} (Windows limit is ~10000)"
+            )
+        else:
+            logger.debug(f"GDI objects after {where}: {count}")
+
     def refresh(self):
+        self._log_gdi("inventory refresh")
         visibility_changed = False
         for campaign, display in self._campaigns.items():
             status = self.get_status(campaign)
@@ -2172,6 +2197,9 @@ class SettingsPanel:
             discord_center, width=8, textvariable=self._discord_vars["interval"]
         )
         interval_entry.grid(column=1, row=3, sticky="w")
+        ttk.Button(
+            discord_center, text="Send test message", command=self.discord_test
+        ).grid(column=1, row=4, sticky="w", pady=(4, 0))
         for entry in (token_entry, channel_entry, interval_entry):
             entry.bind("<FocusOut>", lambda e: self.discord_apply())
             entry.bind("<Return>", lambda e: self.discord_apply())
@@ -2277,7 +2305,18 @@ class SettingsPanel:
             command=self._manager._twitch.state_change(State.INVENTORY_FETCH),
         ).grid(column=1, row=0)
 
-    def discord_apply(self) -> None:
+    def discord_test(self) -> None:
+        self.discord_apply(restart=False)
+        twitch = self._manager._twitch
+
+        async def run_test() -> None:
+            # restart first, so the test uses a session built with the current token
+            await twitch.discord.restart()
+            twitch.gui.print(f"Discord: {await twitch.discord.send_test()}")
+
+        asyncio.create_task(run_test())
+
+    def discord_apply(self, restart: bool = True) -> None:
         settings = self._settings
         enabled = bool(self._discord_vars["enabled"].get())
         token = self._discord_vars["token"].get().strip()
@@ -2295,7 +2334,8 @@ class SettingsPanel:
         settings.discord_channel_id = channel_id
         settings.discord_interval = interval
         settings.save()
-        asyncio.create_task(self._manager._twitch.discord.restart())
+        if restart:
+            asyncio.create_task(self._manager._twitch.discord.restart())
 
     def clear_selection(self) -> None:
         self._priority_list.selection_clear(0, "end")

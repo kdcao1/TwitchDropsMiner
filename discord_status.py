@@ -82,6 +82,37 @@ class DiscordStatus:
     def _current_drop(self) -> TimedDrop | None:
         return self._twitch.gui.progress.current_drop
 
+    def _priority_text(self, campaign: Any) -> str:
+        settings = self._twitch.settings
+        if campaign.id in settings.priority_campaigns:
+            return "★ Manually prioritized"
+        if campaign.game.name in settings.priority:
+            return f"Game priority #{settings.priority.index(campaign.game.name) + 1}"
+        return "Not prioritized"
+
+    async def send_test(self) -> str:
+        """Sends a one-off test message and returns a human readable result."""
+        settings = self._twitch.settings
+        if not settings.discord_token.strip() or not settings.discord_channel_id.strip():
+            return "Enter a bot token and a channel ID first."
+        try:
+            status, data = await self._request(
+                "POST",
+                f"/channels/{settings.discord_channel_id.strip()}/messages",
+                {"content": "✅ Twitch Drops Miner test message. Discord status is working."},
+            )
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            return f"Could not reach Discord: {exc}"
+        if status in (200, 201):
+            return "Test message sent. Check the channel."
+        hints = {
+            401: "the bot token is invalid",
+            403: "the bot lacks Send Messages permission in that channel",
+            404: "the channel ID is wrong, or the bot is not in that server",
+        }
+        reason = hints.get(status, data.get("message", "unknown error"))
+        return f"Test failed (HTTP {status}): {reason}."
+
     def _build_embed(self) -> dict[str, Any]:
         drop = self._current_drop()
         channel = self._twitch.watching_channel.get_with_default(None)
@@ -103,6 +134,7 @@ class DiscordStatus:
                 "value": f"[{channel.name}]({channel.url})",
                 "inline": True,
             },
+            {"name": "Priority", "value": self._priority_text(campaign), "inline": True},
             {
                 "name": f"Drop: {drop.rewards_text()}",
                 "value": f"{_bar(drop.progress)}\n{_duration(drop.remaining_minutes)} remaining",
