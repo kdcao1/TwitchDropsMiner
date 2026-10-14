@@ -49,6 +49,8 @@ class DiscordStatus:
         self._tracked: tuple[str, int] | None = None  # (drop id, current minutes)
         self._tracked_since: float = 0.0
         self._stall_alerted: bool = False
+        # drops we already warned about not finishing in time
+        self._deadline_alerted: set[str] = set()
 
     @property
     def configured(self) -> bool:
@@ -184,6 +186,36 @@ class DiscordStatus:
 
     # --- stall detection ---
 
+    async def _check_deadline(self) -> None:
+        """Warns once per drop if it cannot finish before it (or its campaign) ends."""
+        drop = self._current_drop()
+        channel = self._twitch.watching_channel.get_with_default(None)
+        if drop is None or channel is None or drop.id in self._deadline_alerted:
+            return
+        ends_at = min(drop.ends_at, drop.campaign.ends_at)
+        minutes_left = (ends_at - datetime.now(timezone.utc)).total_seconds() / 60
+        # watching earns one drop minute per real minute, so remaining > time left = too late
+        if drop.remaining_minutes <= minutes_left:
+            return
+        self._deadline_alerted.add(drop.id)
+        settings = self._twitch.settings
+        await self._request(
+            "POST",
+            f"/channels/{settings.discord_channel_id.strip()}/messages",
+            {
+                "embeds": [{
+                    "title": "⏰ Drop will not finish in time",
+                    "color": COLOR_STALLED,
+                    "description": (
+                        f"**{drop.rewards_text()}** ({drop.campaign.game.name}: "
+                        f"{drop.campaign.name}) needs {_duration(drop.remaining_minutes)} more "
+                        f"but ends in {_duration(int(minutes_left))}."
+                    ),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }],
+            },
+        )
+
     async def _check_stall(self) -> None:
         drop = self._current_drop()
         channel = self._twitch.watching_channel.get_with_default(None)
@@ -225,6 +257,7 @@ class DiscordStatus:
         while True:
             try:
                 await self._check_stall()
+                await self._check_deadline()
                 if not await self._send_or_edit(self._build_embed()):
                     self._task = None  # configuration is unusable, stop for good
                     return
