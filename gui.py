@@ -1460,6 +1460,26 @@ class InventoryOverview:
             text=f"{_('gui', 'inventory', 'allowed_channels')}\n{allowed_text}",
             takefocus=False,
         ).grid(column=1, row=4, sticky="nw", padx=4)
+        # Manual campaign priority toggle
+        prio_button = ttk.Button(campaign_frame, width=14)
+
+        def toggle_priority() -> None:
+            prio_list = self._settings.priority_campaigns
+            if campaign.id in prio_list:
+                prio_list.remove(campaign.id)
+            else:
+                prio_list.append(campaign.id)
+            self._settings.alter()
+            update_prio_button()
+            self._manager._twitch.change_state(State.INVENTORY_FETCH)
+
+        def update_prio_button() -> None:
+            prioritized = campaign.id in self._settings.priority_campaigns
+            prio_button.config(text="★ Prioritized" if prioritized else "☆ Prioritize")
+
+        prio_button.config(command=toggle_priority)
+        update_prio_button()
+        prio_button.grid(column=0, row=5, columnspan=2, sticky="w", pady=(4, 0))
         # Image
         campaign_image = await self._cache.get(campaign.image_url, size=(108, 144))
         ttk.Label(campaign_frame, image=campaign_image).grid(column=0, row=1, rowspan=4)
