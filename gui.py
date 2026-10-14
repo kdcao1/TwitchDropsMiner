@@ -1293,6 +1293,8 @@ class InventoryOverview:
             "excluded": IntVar(master, 0),
             "finished": IntVar(master, 0),
         }
+        self._search = StringVar(master)
+        self._search.trace_add("write", lambda *args: self.refresh())
         manager.tabs.add_view_event(self._on_tab_switched)
 
         # Filtering options
@@ -1347,6 +1349,12 @@ class InventoryOverview:
         ).grid(column=(icolumn := icolumn + 1), row=0)
         ttk.Button(
             filter_frame, text=_("gui", "inventory", "filter", "refresh"), command=self.refresh
+        ).grid(column=(icolumn := icolumn + 1), row=0)
+        ttk.Label(
+            filter_frame, text="Search", padding=(LABEL_SPACING, 0, 4, 0)
+        ).grid(column=(icolumn := icolumn + 1), row=0)
+        ttk.Entry(
+            filter_frame, width=24, textvariable=self._search
         ).grid(column=(icolumn := icolumn + 1), row=0)
 
         # Inventory view. Campaign frames are canvas window items created only
@@ -1404,6 +1412,13 @@ class InventoryOverview:
         upcoming = bool(self._filters["upcoming"].get())
         finished = bool(self._filters["finished"].get())
         priority_only = self._settings.priority_mode is PriorityMode.PRIORITY_ONLY
+        search = self._search.get().strip().lower()
+        if (
+            search
+            and search not in campaign.name.lower()
+            and search not in campaign.game.name.lower()
+        ):
+            return False
         return (
             campaign.required_minutes > 0
             and (not_linked or campaign.eligible)
@@ -1432,6 +1447,11 @@ class InventoryOverview:
             # There is no reason to keep the heavy inventory card hierarchy
             # alive while another tab is displayed.
             self._unrealize_all()
+
+    def _campaign_title(self, campaign: DropsCampaign) -> str:
+        if campaign.id in self._settings.priority_campaigns:
+            return f"★ {campaign.name}"
+        return campaign.name
 
     def get_status(self, campaign: DropsCampaign) -> tuple[str, str]:
         if campaign.active:
@@ -1472,6 +1492,16 @@ class InventoryOverview:
             for campaign in self._campaign_order
             if self._campaign_visibility.get(campaign, False)
         ]
+        # Manually prioritized campaigns first, then ones already in progress,
+        # then everything else by the time they end. The sort is stable.
+        prioritized = self._settings.priority_campaigns
+        visible.sort(
+            key=lambda c: (
+                c.id not in prioritized,
+                not (c.progress > 0 and not c.finished),
+                c.ends_at,
+            )
+        )
         self._visible_campaigns = visible
         self._visible_rows = {campaign: row for row, campaign in enumerate(visible)}
 
@@ -1623,9 +1653,13 @@ class InventoryOverview:
             campaign_frame.columnconfigure(1, weight=1)
             campaign_frame.columnconfigure(3, weight=10000)
 
-            ttk.Label(
-                campaign_frame, text=campaign.name, takefocus=False, width=45
-            ).grid(column=0, row=0, columnspan=2, sticky="w")
+            name_label = ttk.Label(
+                campaign_frame,
+                text=self._campaign_title(campaign),
+                takefocus=False,
+                width=45,
+            )
+            name_label.grid(column=0, row=0, columnspan=2, sticky="w")
 
             status_text, status_color = self.get_status(campaign)
             self._campaign_status[campaign] = (status_text, status_color)
@@ -1689,7 +1723,9 @@ class InventoryOverview:
             # Manual campaign priority toggle
             prio_button = ttk.Button(campaign_frame, width=14)
 
-            def toggle_priority(campaign=campaign, prio_button=prio_button) -> None:
+            def toggle_priority(
+                campaign=campaign, prio_button=prio_button, name_label=name_label
+            ) -> None:
                 prio_list = self._settings.priority_campaigns
                 if campaign.id in prio_list:
                     prio_list.remove(campaign.id)
@@ -1697,6 +1733,8 @@ class InventoryOverview:
                     prio_list.append(campaign.id)
                 self._settings.alter()
                 update_prio_button(campaign, prio_button)
+                name_label.config(text=self._campaign_title(campaign))
+                self._schedule_layout()  # re-sort: prioritized campaigns move to the top
                 self._manager._twitch.change_state(State.INVENTORY_FETCH)
 
             def update_prio_button(campaign=campaign, prio_button=prio_button) -> None:
