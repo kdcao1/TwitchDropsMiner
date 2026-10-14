@@ -23,6 +23,11 @@ class SettingsFile(TypedDict):
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
+    discord_enabled: bool
+    discord_token: str
+    discord_channel_id: str
+    discord_interval: int
+    discord_message_id: str
 
 
 default_settings: SettingsFile = {
@@ -37,6 +42,11 @@ default_settings: SettingsFile = {
     "enable_badges_emotes": False,
     "available_drops_check": False,
     "priority_mode": PriorityMode.PRIORITY_ONLY,
+    "discord_enabled": False,
+    "discord_token": "",
+    "discord_channel_id": "",
+    "discord_interval": 30,
+    "discord_message_id": "",
 }
 
 
@@ -61,6 +71,11 @@ class Settings:
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
+    discord_enabled: bool
+    discord_token: str
+    discord_channel_id: str
+    discord_interval: int
+    discord_message_id: str
 
     PASSTHROUGH = ("_settings", "_args", "_altered")
 
