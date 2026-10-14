@@ -17,6 +17,7 @@ class SettingsFile(TypedDict):
     dark_mode: bool
     exclude: set[str]
     priority: list[str]
+    priority_campaigns: list[str]
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
@@ -28,6 +29,7 @@ class SettingsFile(TypedDict):
 default_settings: SettingsFile = {
     "proxy": URL(),
     "priority": [],
+    "priority_campaigns": [],
     "exclude": set(),
     "dark_mode": False,
     "autostart_tray": False,
@@ -55,6 +57,7 @@ class Settings:
     dark_mode: bool
     exclude: set[str]
     priority: list[str]
+    priority_campaigns: list[str]
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool

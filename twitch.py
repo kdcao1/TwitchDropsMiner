@@ -688,6 +688,7 @@ class Twitch:
                 self.wanted_games.clear()
                 exclude = self.settings.exclude
                 priority = self.settings.priority
+                priority_campaigns = self.settings.priority_campaigns
                 priority_mode = self.settings.priority_mode
                 priority_only = priority_mode is PriorityMode.PRIORITY_ONLY
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -703,13 +704,19 @@ class Twitch:
                         priority.index(c.game.name) if c.game.name in priority else MAX_INT
                     )
                 )
+                # manually prioritized campaigns always go first
+                sorted_campaigns.sort(key=lambda c: c.id not in priority_campaigns)
                 for campaign in sorted_campaigns:
                     game: Game = campaign.game
                     if (
                         game not in self.wanted_games  # isn't already there
                         # and isn't excluded by list or priority mode
                         and game.name not in exclude
-                        and (not priority_only or game.name in priority)
+                        and (
+                            not priority_only
+                            or game.name in priority
+                            or campaign.id in priority_campaigns
+                        )
                         # and can be progressed within the next hour
                         and campaign.can_earn_within(next_hour)
                     ):
@@ -978,12 +985,12 @@ class Twitch:
                 self.stop_watching()
                 continue
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
-            succeeded: bool = await channel.send_watch()
             last_sent: float = time()
+            succeeded: bool = await channel.send_watch()
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
-            # wait ~20 seconds for a progress update
-            await asyncio.sleep(20)
+            # wait ~15 seconds for a progress update
+            await asyncio.sleep(15 - min(time() - last_sent, 15))
             if self.gui.progress.minute_almost_done():
                 # If the previous update was more than ~60s ago, and the progress tracker
                 # isn't counting down anymore, that means Twitch has temporarily
@@ -1780,7 +1787,8 @@ class Twitch:
             if campaign.can_earn(watching_channel):
                 campaigns.append(campaign)
         if campaigns:
-            campaigns.sort(key=lambda c: c.remaining_minutes)
+            priority_campaigns = self.settings.priority_campaigns
+            campaigns.sort(key=lambda c: (c.id not in priority_campaigns, c.remaining_minutes))
             return campaigns[0]
         return None
 

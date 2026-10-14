@@ -1682,6 +1682,27 @@ class InventoryOverview:
                 takefocus=False,
             ).grid(column=1, row=4, sticky="nw", padx=4)
 
+            # Manual campaign priority toggle
+            prio_button = ttk.Button(campaign_frame, width=14)
+
+            def toggle_priority(campaign=campaign, prio_button=prio_button) -> None:
+                prio_list = self._settings.priority_campaigns
+                if campaign.id in prio_list:
+                    prio_list.remove(campaign.id)
+                else:
+                    prio_list.append(campaign.id)
+                self._settings.alter()
+                update_prio_button(campaign, prio_button)
+                self._manager._twitch.change_state(State.INVENTORY_FETCH)
+
+            def update_prio_button(campaign=campaign, prio_button=prio_button) -> None:
+                prioritized = campaign.id in self._settings.priority_campaigns
+                prio_button.config(text="★ Prioritized" if prioritized else "☆ Prioritize")
+
+            prio_button.config(command=toggle_priority)
+            update_prio_button()
+            prio_button.grid(column=1, row=0, sticky="e", padx=4)
+
             # Create lightweight placeholders before awaiting image cache I/O so
             # scrolling never waits for image decode/network work.
             campaign_image_label = ttk.Label(campaign_frame)
