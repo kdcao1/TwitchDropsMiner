@@ -17,6 +17,16 @@ Every several seconds, the application pretends to watch a particular stream by 
 - Login session is saved in a cookies file, so you don't need to login every time.
 - Mining is automatically started as new campaigns appear, and stopped when the last available drops have been mined.
 
+### Fork additions:
+
+This fork of [DevilXD/TwitchDropsMiner](https://github.com/DevilXD/TwitchDropsMiner) carries the following on top of upstream:
+
+- Includes upstream PR [#1180](https://github.com/DevilXD/TwitchDropsMiner/pull/1180) (open, not yet merged upstream): SMARTBOX device login with readable errors, campaign catalog fallback, GraphQL hardening, and a virtualized inventory for large accounts.
+- Campaign prioritization: the `☆ Prioritize` button on an inventory campaign card mines that campaign before anything else, regardless of the game Priority List or Priority Only mode. Stored as `priority_campaigns` in `settings.json`.
+- Deadline-aware selection: campaigns whose remaining drops can't be completed before the campaign ends are skipped while something else is mineable, and games are re-picked the moment a drop stops being completable.
+- Inventory search and ordering: a search box filters campaigns by name or game; cards are ordered prioritized first, then in progress, then by end time, and prioritized campaigns show a star.
+- Discord status bot (Settings tab, off by default): a bot token and channel ID keep one status message updated with the current channel, drop, campaign, progress and priority. It also posts alerts when progress stalls for 15 minutes or when the current drop can't finish before it ends, each with a `Dismiss` button that deletes it. A test button sends a sample message.
+
 ### Usage:
 
 - Download and unzip [the latest release](https://github.com/DevilXD/TwitchDropsMiner/releases) - it's recommended to keep it in the folder it comes in.
