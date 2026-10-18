@@ -19,6 +19,7 @@ from translate import _
 from gui import GUIManager
 from channel import Channel
 from discord_status import DiscordStatus
+from webui import WebUI
 from websocket import WebsocketPool
 from inventory import DropsCampaign
 from exceptions import (
@@ -491,6 +492,7 @@ class Twitch:
         self._mnt_task: asyncio.Task[None] | None = None
         # Discord status message
         self.discord = DiscordStatus(self)
+        self.webui = WebUI(self)
 
     async def get_session(self) -> aiohttp.ClientSession:
         if (session := self._session) is not None:
@@ -537,6 +539,7 @@ class Twitch:
             self._mnt_task.cancel()
             self._mnt_task = None
         await self.discord.stop()
+        await self.webui.stop()
         # stop websocket, close session and save cookies
         await self.websocket.stop(clear_topics=True)
         if self._session is not None:
@@ -649,6 +652,7 @@ class Twitch:
         • Changing the stream that's being watched if necessary
         """
         self.gui.start()
+        await self.webui.start()
         auth_state = await self.get_auth()
         self.discord.start()
         await self.websocket.start()

@@ -29,6 +29,10 @@ class SettingsFile(TypedDict):
     discord_channel_id: str
     discord_interval: int
     discord_message_id: str
+    webui_enabled: bool
+    webui_host: str
+    webui_port: int
+    webui_password: str
 
 
 default_settings: SettingsFile = {
@@ -49,6 +53,10 @@ default_settings: SettingsFile = {
     "discord_channel_id": "",
     "discord_interval": 30,
     "discord_message_id": "",
+    "webui_enabled": False,
+    "webui_host": "127.0.0.1",
+    "webui_port": 8080,
+    "webui_password": "",
 }
 
 
@@ -79,6 +87,10 @@ class Settings:
     discord_channel_id: str
     discord_interval: int
     discord_message_id: str
+    webui_enabled: bool
+    webui_host: str
+    webui_port: int
+    webui_password: str
 
     PASSTHROUGH = ("_settings", "_args", "_altered")
 

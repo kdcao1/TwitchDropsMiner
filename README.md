@@ -26,6 +26,7 @@ This fork of [DevilXD/TwitchDropsMiner](https://github.com/DevilXD/TwitchDropsMi
 - Deadline-aware selection: campaigns whose remaining drops can't be completed before the campaign ends are skipped while something else is mineable, and games are re-picked the moment a drop stops being completable.
 - Inventory search and ordering: a search box filters campaigns by name or game; cards are ordered prioritized first, then in progress, then by end time, and prioritized campaigns show a star.
 - Discord status bot (Settings tab, off by default): a bot token and channel ID keep one status message updated with the current channel, drop, campaign, progress and priority. It also posts alerts when progress stalls for 15 minutes or when the current drop can't finish before it ends, each with a `Dismiss` button that deletes it. A test button sends a sample message.
+- Web UI (Settings tab, off by default): a built-in web page showing status, drop progress, channels, campaigns and the log, where you can edit the priority and exclude lists, priority mode, campaign priority and a few options, switch channels and reload. Set a host (default `127.0.0.1`), port (default `8080`) and a required password. The page asks for the password once; every API call is checked against it. Bind to `0.0.0.0` or put it behind a reverse proxy (it works under a subpath) to reach it from other devices, and use HTTPS when exposing it outside your network.
 
 ### Usage:
 
