@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import asyncio
 import logging
 from time import time
@@ -21,6 +22,15 @@ STALL_SECONDS = 15 * 60  # no drop progress for this long while watching = stall
 COLOR_ACTIVE = 0x57F287
 COLOR_IDLE = 0x95A5A6
 COLOR_STALLED = 0xED4245
+GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
+DISMISS_ID = "tdm_dismiss"
+# a "Dismiss" button attached to alert messages, clicking it deletes the alert
+DISMISS_COMPONENTS = [{
+    "type": 1,
+    "components": [{"type": 2, "style": 2, "label": "Dismiss", "custom_id": DISMISS_ID}],
+}]
+# gateway close codes after which reconnecting cannot succeed (bad token, bad intents)
+GATEWAY_FATAL_CODES = (4004, 4010, 4011, 4012, 4013, 4014)
 
 
 def _bar(progress: float, length: int = 14) -> str:
@@ -44,6 +54,7 @@ class DiscordStatus:
     def __init__(self, twitch: Twitch):
         self._twitch = twitch
         self._task: asyncio.Task[None] | None = None
+        self._gateway_task: asyncio.Task[None] | None = None
         self._session: aiohttp.ClientSession | None = None
         # stall detection
         self._tracked: tuple[str, int] | None = None  # (drop id, current minutes)
@@ -64,11 +75,16 @@ class DiscordStatus:
     def start(self) -> None:
         if self._task is None and self.configured:
             self._task = asyncio.create_task(self._loop())
+        if self._gateway_task is None and self.configured:
+            self._gateway_task = asyncio.create_task(self._gateway_loop())
 
     async def stop(self) -> None:
         if self._task is not None:
             self._task.cancel()
             self._task = None
+        if self._gateway_task is not None:
+            self._gateway_task.cancel()
+            self._gateway_task = None
         if self._session is not None:
             await self._session.close()
             self._session = None
@@ -164,7 +180,7 @@ class DiscordStatus:
     # --- Discord API ---
 
     async def _request(
-        self, method: str, path: str, payload: dict[str, Any]
+        self, method: str, path: str, payload: dict[str, Any] | None = None
     ) -> tuple[int, dict[str, Any]]:
         settings = self._twitch.settings
         if self._session is None or self._session.closed:
@@ -253,6 +269,7 @@ class DiscordStatus:
                     ),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }],
+                "components": DISMISS_COMPONENTS,
             },
         )
 
@@ -290,8 +307,102 @@ class DiscordStatus:
                     ),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }],
+                "components": DISMISS_COMPONENTS,
             },
         )
+
+    # --- gateway: receives clicks on the Dismiss button ---
+
+    async def _gateway_loop(self) -> None:
+        backoff = 5
+        while True:
+            try:
+                if not await self._gateway_session():
+                    self._gateway_task = None  # fatal, reconnecting will not help
+                    return
+                backoff = 5
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                logger.warning(f"Discord gateway connection failed: {exc}")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 300)
+
+    async def _heartbeat(
+        self, ws: aiohttp.ClientWebSocketResponse, interval: float, get_seq: Any
+    ) -> None:
+        while True:
+            await asyncio.sleep(interval)
+            await ws.send_json({"op": 1, "d": get_seq()})
+
+    async def _gateway_session(self) -> bool:
+        """Runs one gateway connection. Returns False if the connection can never work."""
+        settings = self._twitch.settings
+        kwargs: dict[str, Any] = {}
+        if settings.proxy:
+            kwargs["proxy"] = settings.proxy
+        seq: int | None = None
+        heartbeat: asyncio.Task[None] | None = None
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(GATEWAY_URL, **kwargs) as ws:
+                try:
+                    async for message in ws:
+                        if message.type != aiohttp.WSMsgType.TEXT:
+                            continue
+                        payload = json.loads(message.data)
+                        if payload.get("s") is not None:
+                            seq = payload["s"]
+                        op = payload.get("op")
+                        if op == 10:  # hello
+                            interval = payload["d"]["heartbeat_interval"] / 1000
+                            heartbeat = asyncio.create_task(
+                                self._heartbeat(ws, interval, lambda: seq)
+                            )
+                            await ws.send_json({
+                                "op": 2,
+                                "d": {
+                                    "token": settings.discord_token.strip(),
+                                    "intents": 0,  # interactions need no intents
+                                    "properties": {
+                                        "os": "windows",
+                                        "browser": "twitch-drops-miner",
+                                        "device": "twitch-drops-miner",
+                                    },
+                                },
+                            })
+                        elif op == 1:  # heartbeat requested
+                            await ws.send_json({"op": 1, "d": seq})
+                        elif op in (7, 9):  # reconnect / invalid session
+                            return True
+                        elif op == 0 and payload.get("t") == "INTERACTION_CREATE":
+                            await self._on_interaction(payload["d"])
+                finally:
+                    if heartbeat is not None:
+                        heartbeat.cancel()
+                if ws.close_code in GATEWAY_FATAL_CODES:
+                    self._twitch.gui.print(
+                        f"Discord gateway refused the connection (code {ws.close_code}); "
+                        "the Dismiss button will not work. Check the bot token."
+                    )
+                    return False
+        return True
+
+    async def _on_interaction(self, data: dict[str, Any]) -> None:
+        # type 3 = message component (button) click
+        if data.get("type") != 3 or data.get("data", {}).get("custom_id") != DISMISS_ID:
+            return
+        settings = self._twitch.settings
+        message_id = str(data.get("message", {}).get("id", ""))
+        channel_id = str(data.get("channel_id", ""))
+        # acknowledge the click (type 6 = deferred message update), so Discord shows no error
+        await self._request(
+            "POST", f"/interactions/{data['id']}/{data['token']}/callback", {"type": 6}
+        )
+        # only ever delete alerts in our own channel, never the status message itself
+        if (
+            message_id
+            and channel_id == settings.discord_channel_id.strip()
+            and message_id != settings.discord_message_id
+        ):
+            await self._request("DELETE", f"/channels/{channel_id}/messages/{message_id}")
 
     async def _loop(self) -> None:
         while True:
