@@ -10,7 +10,7 @@ import logging
 import plistlib
 import tkinter as tk
 from pathlib import Path
-from collections import abc
+from collections import abc, deque
 from textwrap import dedent
 from math import log10, ceil
 from dataclasses import dataclass
@@ -452,6 +452,10 @@ class StatusBar:
         frame.grid(column=0, row=0, columnspan=3, sticky="nsew", padx=2)
         self._label = ttk.Label(frame)
         self._label.grid(column=0, row=0, sticky="nsew")
+
+    @property
+    def text(self) -> str:
+        return str(self._label.cget("text"))
 
     def update(self, text: str):
         self._label.config(text=text)
@@ -1049,6 +1053,10 @@ class ChannelList:
 
     def clear_selection(self):
         self._table.selection_set('')
+
+    def select(self, channel: Channel) -> None:
+        if channel.iid in self._channel_map:
+            self._table.selection_set(channel.iid)
 
     def clear(self):
         iids = self._table.get_children()
@@ -2204,6 +2212,37 @@ class SettingsPanel:
             entry.bind("<FocusOut>", lambda e: self.discord_apply())
             entry.bind("<Return>", lambda e: self.discord_apply())
 
+        # Web UI section
+        webui_frame = ttk.LabelFrame(
+            center_frame, padding=(4, 0, 4, 4), text="Web UI (remote access)"
+        )
+        webui_frame.grid(column=0, row=3, columnspan=3, sticky="nsew")
+        webui_center = ttk.Frame(webui_frame)
+        webui_center.grid(column=0, row=0)
+        webui_frame.columnconfigure(0, weight=1)
+        self._webui_vars: dict[str, Any] = {
+            "enabled": IntVar(master, int(self._settings.webui_enabled)),
+            "host": StringVar(master, self._settings.webui_host),
+            "port": StringVar(master, str(self._settings.webui_port)),
+            "password": StringVar(master, self._settings.webui_password),
+        }
+        ttk.Label(webui_center, text="Enabled").grid(column=0, row=0, sticky="e")
+        ttk.Checkbutton(
+            webui_center, variable=self._webui_vars["enabled"], command=self.webui_apply
+        ).grid(column=1, row=0, sticky="w")
+        for row, (key, label, width, show) in enumerate((
+            ("host", "Host", 20, ""),
+            ("port", "Port", 8, ""),
+            ("password", "Password (required)", 30, "•"),
+        ), start=1):
+            ttk.Label(webui_center, text=label).grid(column=0, row=row, sticky="e")
+            entry = ttk.Entry(
+                webui_center, width=width, show=show, textvariable=self._webui_vars[key]
+            )
+            entry.grid(column=1, row=row, sticky="w")
+            entry.bind("<FocusOut>", lambda e: self.webui_apply())
+            entry.bind("<Return>", lambda e: self.webui_apply())
+
         # Priority section
         priority_frame = ttk.LabelFrame(
             center_frame, padding=(4, 0, 4, 4), text=_("gui", "settings", "priority")
@@ -2297,7 +2336,7 @@ class SettingsPanel:
 
         # Reload button
         reload_frame = ttk.Frame(center_frame)
-        reload_frame.grid(column=0, row=3, columnspan=3, pady=4)
+        reload_frame.grid(column=0, row=4, columnspan=3, pady=4)
         ttk.Label(reload_frame, text=_("gui", "settings", "reload_text")).grid(column=0, row=0)
         ttk.Button(
             reload_frame,
@@ -2336,6 +2375,44 @@ class SettingsPanel:
         settings.save()
         if restart:
             asyncio.create_task(self._manager._twitch.discord.restart())
+
+    def webui_apply(self) -> None:
+        settings = self._settings
+        enabled = bool(self._webui_vars["enabled"].get())
+        host = self._webui_vars["host"].get().strip() or "127.0.0.1"
+        password = self._webui_vars["password"].get()
+        try:
+            port = int(self._webui_vars["port"].get())
+            if not 0 < port < 65536:
+                raise ValueError
+        except ValueError:
+            port = settings.webui_port
+        self._webui_vars["host"].set(host)
+        self._webui_vars["port"].set(str(port))
+        if (enabled, host, port, password) == (
+            settings.webui_enabled, settings.webui_host, settings.webui_port,
+            settings.webui_password,
+        ):
+            return
+        settings.webui_enabled = enabled
+        settings.webui_host = host
+        settings.webui_port = port
+        settings.webui_password = password
+        settings.save()
+        if enabled and not password:
+            self._manager.print("Web UI: set a password to enable it")
+        asyncio.create_task(self._manager._twitch.webui.restart())
+
+    def refresh(self) -> None:
+        self._priority_list.delete(0, "end")
+        self._priority_list.insert("end", *self._settings.priority)
+        self._exclude_list.delete(0, "end")
+        self._exclude_list.insert("end", *sorted(self._settings.exclude))
+        self._vars["priority_mode"].set(self.PRIORITY_MODES[self._settings.priority_mode])
+        self._vars["available_drops_check"].set(int(self._settings.available_drops_check))
+        self._vars["enable_badges_emotes"].set(int(self._settings.enable_badges_emotes))
+        self.update_excluded_choices()
+        self.update_priority_choices()
 
     def clear_selection(self) -> None:
         self._priority_list.selection_clear(0, "end")
@@ -2700,6 +2777,7 @@ class HelpTab:
 class GUIManager:
     def __init__(self, twitch: Twitch):
         self._twitch: Twitch = twitch
+        self.history: deque[str] = deque(maxlen=200)
         self._poll_task: asyncio.Task[NoReturn] | None = None
         self._close_requested = asyncio.Event()
         self._root = root = Tk(className=WINDOW_TITLE)
@@ -2971,6 +3049,8 @@ class GUIManager:
     def print(self, message: str):
         # print to our custom output
         self.output.print(message)
+        stamp = datetime.now().strftime("%X")
+        self.history.extend(f"{stamp}: {line}" for line in message.splitlines())
 
     def _set_title_bar_color(self, color: int) -> None:
         """
