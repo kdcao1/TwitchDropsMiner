@@ -21,6 +21,7 @@ from channel import Channel
 from discord_status import DiscordStatus
 from webui import WebUI
 from websocket import WebsocketPool
+from watch_detect import user_watching_twitch
 from inventory import DropsCampaign
 from exceptions import (
     ExitRequest,
@@ -486,6 +487,7 @@ class Twitch:
         self.watching_channel: AwaitableValue[Channel] = AwaitableValue()
         self._watching_task: asyncio.Task[None] | None = None
         self._watching_restart = asyncio.Event()
+        self._user_watching: bool = False
         # Websocket
         self.websocket = WebsocketPool(self)
         # Maintenance task
@@ -1003,6 +1005,19 @@ class Twitch:
                 # if the channel isn't online anymore, we stop watching it
                 self.stop_watching()
                 continue
+            if self.settings.pause_when_watching and await asyncio.to_thread(user_watching_twitch):
+                if not self._user_watching:
+                    self._user_watching = True
+                    self.gui.progress.stop_timer()
+                    self.gui.tray.change_icon("idle")
+                    status_text = _("status", "paused_watching")
+                    self.print(status_text)
+                    self.gui.status.update(status_text)
+                await self._watch_sleep(interval)
+                continue
+            if self._user_watching:
+                self._user_watching = False
+                self.watch(channel)
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
             last_sent: float = time()
             succeeded: bool = await channel.send_watch()

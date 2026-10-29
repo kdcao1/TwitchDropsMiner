@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 class StatusMessages(TypedDict):
     terminated: str
     watching: str
+    paused_watching: str
     goes_online: str
     goes_offline: str
     claimed_drop: str
@@ -161,6 +162,7 @@ class GUISettingsGeneral(TypedDict):
     autostart: str
     tray: str
     tray_notifications: str
+    pause_when_watching: str
     dark_mode: str
     priority_mode: str
     proxy: str
@@ -239,6 +241,7 @@ default_translation: Translation = {
     "status": {
         "terminated": "\nApplication Terminated.\nClose the window to exit the application.",
         "watching": "Watching: {channel}",
+        "paused_watching": "Paused: you are watching Twitch",
         "goes_online": "{channel} goes ONLINE, switching...",
         "goes_offline": "{channel} goes OFFLINE, switching...",
         "claimed_drop": "Claimed drop: {drop}",
@@ -377,6 +380,7 @@ default_translation: Translation = {
                 "autostart": "Autostart: ",
                 "tray": "Autostart into tray: ",
                 "tray_notifications": "Tray notifications: ",
+                "pause_when_watching": "Pause while I'm watching Twitch: ",
                 "dark_mode": "Dark mode: ",
                 "priority_mode": "Priority mode: ",
                 "proxy": "Proxy (requires restart):",

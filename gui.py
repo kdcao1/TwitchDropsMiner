@@ -1991,6 +1991,7 @@ class _SettingsVars(TypedDict):
     language: StringVar
     priority_mode: StringVar
     tray_notifications: IntVar
+    pause_when_watching: IntVar
     enable_badges_emotes: IntVar
     available_drops_check: IntVar
 
@@ -2026,6 +2027,7 @@ class SettingsPanel:
             "dark_mode": IntVar(master, int(self._settings.dark_mode)),
             "priority_mode": StringVar(master, self.PRIORITY_MODES[priority_mode]),
             "tray_notifications": IntVar(master, self._settings.tray_notifications),
+            "pause_when_watching": IntVar(master, int(self._settings.pause_when_watching)),
             "enable_badges_emotes": IntVar(
                 master, int(self._settings.enable_badges_emotes)
             ),
@@ -2092,6 +2094,18 @@ class SettingsPanel:
                     bool(self._vars["tray_notifications"].get()),
                 ),
             ).grid(column=1, row=irow, sticky="w")
+        ttk.Label(
+            checkboxes_frame, text=_("gui", "settings", "general", "pause_when_watching")
+        ).grid(column=0, row=(irow := irow + 1), sticky="e")
+        ttk.Checkbutton(
+            checkboxes_frame,
+            variable=self._vars["pause_when_watching"],
+            command=lambda: setattr(
+                self._settings,
+                "pause_when_watching",
+                bool(self._vars["pause_when_watching"].get()),
+            ),
+        ).grid(column=1, row=irow, sticky="w")
         ttk.Label(
             checkboxes_frame, text=_("gui", "settings", "general", "dark_mode")
         ).grid(column=0, row=(irow := irow + 1), sticky="e")
@@ -2410,6 +2424,7 @@ class SettingsPanel:
         self._exclude_list.insert("end", *sorted(self._settings.exclude))
         self._vars["priority_mode"].set(self.PRIORITY_MODES[self._settings.priority_mode])
         self._vars["available_drops_check"].set(int(self._settings.available_drops_check))
+        self._vars["pause_when_watching"].set(int(self._settings.pause_when_watching))
         self._vars["enable_badges_emotes"].set(int(self._settings.enable_badges_emotes))
         self.update_excluded_choices()
         self.update_priority_choices()
@@ -3413,6 +3428,7 @@ if __name__ == "__main__":
                 tray_notifications=True,
                 enable_badges_emotes=False,
                 available_drops_check=False,
+                pause_when_watching=False,
                 logging_level=LOGGING_LEVELS[0],
                 priority_mode=PriorityMode.PRIORITY_ONLY,
             )

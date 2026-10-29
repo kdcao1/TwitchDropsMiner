@@ -23,6 +23,7 @@ class SettingsFile(TypedDict):
     tray_notifications: bool
     enable_badges_emotes: bool
     available_drops_check: bool
+    pause_when_watching: bool
     priority_mode: PriorityMode
     discord_enabled: bool
     discord_token: str
@@ -47,6 +48,7 @@ default_settings: SettingsFile = {
     "tray_notifications": True,
     "enable_badges_emotes": False,
     "available_drops_check": False,
+    "pause_when_watching": True,
     "priority_mode": PriorityMode.PRIORITY_ONLY,
     "discord_enabled": False,
     "discord_token": "",
@@ -81,6 +83,7 @@ class Settings:
     tray_notifications: bool
     enable_badges_emotes: bool
     available_drops_check: bool
+    pause_when_watching: bool
     priority_mode: PriorityMode
     discord_enabled: bool
     discord_token: str
