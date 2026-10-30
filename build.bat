@@ -34,6 +34,16 @@ if not exist "%dirpath%\env\scripts\pyinstaller.exe" (
     )
 )
 
+echo Installing requirements.txt...
+"%dirpath%\env\scripts\pip" install -r "%dirpath%\requirements.txt"
+if errorlevel 1 (
+    echo:
+    echo Failed to install requirements.
+    echo:
+    if not "%~1"=="--nopause" pause
+    exit /b 1
+)
+
 REM Run PyInstaller with the specified build spec file
 echo Building...
 "%dirpath%\env\scripts\pyinstaller" "%dirpath%\build.spec"
