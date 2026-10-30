@@ -504,12 +504,15 @@ class _AuthState:
                         if response.status == 401:
                             # the access token we have is invalid - clear the cookie and reauth
                             logger.info("Restored session is invalid")
-                            assert client_info.CLIENT_URL.host is not None
-                            jar.clear_domain(client_info.CLIENT_URL.host)
+                            jar.clear(lambda morsel: morsel.key == "auth-token")
+                            self._delattrs("access_token")
                             continue
                         elif response.status == 200:
                             validate_response = await response.json()
                             break
+                        raise RuntimeError(
+                            f"Login verification failure (status {response.status})"
+                        )
                 else:
                     raise RuntimeError("Login verification failure (step #2)")
                 # ensure the cookie's client ID matches the currently selected client
