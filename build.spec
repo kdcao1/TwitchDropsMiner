@@ -13,6 +13,8 @@ SELF_PATH = str(Path(".").resolve())
 if SELF_PATH not in sys.path:
     sys.path.insert(0, SELF_PATH)
 
+from PyInstaller.utils.hooks import collect_submodules
+
 from constants import WORKING_DIR, SITE_PACKAGES_PATH, DEFAULT_LANG
 
 if TYPE_CHECKING:
@@ -66,6 +68,7 @@ hiddenimports: list[str] = [
     "setuptools._distutils.dir_util",
     "setuptools._distutils.file_util",
     "setuptools._distutils.archive_util",
+    *collect_submodules("zendriver"),
 ]
 
 if sys.platform == "linux":
